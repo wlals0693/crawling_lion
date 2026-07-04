@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Silver Arrow Quotes</title>
+
+    <!-- CSS 파일 연결 -->
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- JS 파일 연결 -->
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <!-- 전체 페이지 배경 효과용 -->
+    <div class="page-bg"></div>
+
+    <!-- =========================
+         Header 영역
+    ========================== -->
+    <header class="site-header">
+      <div class="header-inner">
+        <p class="eyebrow">CRAWLING PROJECT</p>
+
+        <h1>Silver Arrow Quotes</h1>
+
+        <p class="header-description">
+          Python으로 수집한 명언 데이터를 감성적인 카드 뷰어로 확인하는
+          페이지입니다.
+        </p>
+
+        <div class="project-info">
+          <span id="tagInfo">Tag: loading...</span>
+          <span id="totalCount">Total: 0 quotes</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- =========================
+         Main 영역
+    ========================== -->
+    <main>
+      <!-- =========================
+             랜덤 명언 영역
+        ========================== -->
+      <section class="random-section" aria-labelledby="randomTitle">
+        <div class="section-title-wrap">
+          <p class="section-label">RANDOM QUOTE</p>
+          <h2 id="randomTitle">오늘의 랜덤 명언</h2>
+        </div>
+
+        <article class="random-card">
+          <div class="random-card-line"></div>
+
+          <p id="randomQuote" class="random-quote">
+            CSV 데이터를 불러오는 중입니다...
+          </p>
+
+          <div class="random-author-area">
+            <p id="randomAuthor" class="random-author">-</p>
+            <p id="randomMeta" class="random-meta">-</p>
+          </div>
+
+          <button id="randomBtn" class="random-btn" type="button">
+            다른 명언 보기
+          </button>
+        </article>
+      </section>
+
+      <!-- =========================
+             검색 / 상태 영역
+        ========================== -->
+      <section class="control-section" aria-label="명언 검색 및 상태 정보">
+        <div class="search-box">
+          <label for="searchInput">명언 검색</label>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="명언, 저자, 출생지 검색..."
+          />
+        </div>
+
+        <div class="view-status">
+          <span id="currentCardInfo">0 / 0</span>
+        </div>
+      </section>
+
+      <!-- =========================
+             전체 명언 카드 스크롤 영역
+        ========================== -->
+      <section class="quote-gallery-section" aria-labelledby="galleryTitle">
+        <div class="section-title-wrap">
+          <p class="section-label">QUOTE FLOW</p>
+          <h2 id="galleryTitle">전체 명언 카드</h2>
+          <p class="section-description">
+            스크롤하면서 크롤링한 전체 명언 데이터를 확인할 수 있습니다.
+          </p>
+        </div>
+
+        <!-- JS가 이 안에 카드들을 생성함 -->
+        <div id="quoteViewer" class="quote-viewer">
+          <div class="loading-card">
+            <p>명언 데이터를 불러오는 중입니다...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================
+             데이터 설명 영역
+        ========================== -->
+      <section class="data-info-section">
+        <div class="data-info-card">
+          <h2>수집 데이터</h2>
+
+          <ul>
+            <li>명언 내용</li>
+            <li>저자 이름</li>
+            <li>저자 생년월일</li>
+            <li>저자 출생지</li>
+            <li>저자 상세 페이지 링크</li>
+          </ul>
+
+          <p>
+            이 페이지는 <strong>quotes.csv</strong> 파일을 JavaScript로 읽어와
+            랜덤 명언과 전체 명언 카드 목록으로 출력합니다.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- =========================
+         Footer 영역
+    ========================== -->
+    <footer class="site-footer">
+      <p>Python requests + BeautifulSoup Crawling Project</p>
+    </footer>
+
+    <!-- JavaScript가 비활성화된 경우 -->
+    <noscript>
+      <div class="noscript-message">
+        이 페이지는 JavaScript를 사용하여 CSV 데이터를 불러옵니다. 브라우저에서
+        JavaScript를 활성화해주세요.
+      </div>
+    </noscript>
+  </body>
+</html>

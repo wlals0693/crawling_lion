@@ -11,12 +11,12 @@ import time
 
 BASE_URL = "https://quotes.toscrape.com"
 
-# 원하는 태그 하나 선택
-# 예: love, life, humor, books, reading, friendship 등
-TAG = "love"
+TAG = "inspirational"
 
 START_URL = f"{BASE_URL}/tag/{TAG}/"
-CSV_FILE = "quotes.csv"
+
+QUOTES_CSV_FILE = "quotes.csv"
+AUTHORS_CSV_FILE = "authors.csv"
 
 
 # =========================
@@ -40,10 +40,35 @@ def get_soup(url):
 # =========================
 
 def get_text_safe(element):
+    """
+    태그가 있으면 텍스트를 가져오고,
+    태그가 없으면 빈 문자열을 반환한다.
+    여러 줄 공백은 한 칸으로 정리한다.
+    """
+
     if element is None:
         return ""
 
-    return element.get_text(strip=True)
+    text = element.get_text(" ", strip=True)
+    text = " ".join(text.split())
+
+    return text
+
+
+# =========================
+# 저자 key 만들기
+# =========================
+
+def make_author_key(author_url):
+    """
+    저자 URL에서 저자 key를 만든다.
+
+    예:
+    https://quotes.toscrape.com/author/Albert-Einstein
+    → Albert-Einstein
+    """
+
+    return author_url.rstrip("/").split("/")[-1]
 
 
 # =========================
@@ -52,10 +77,10 @@ def get_text_safe(element):
 
 author_cache = {}
 
-def get_author_info(author_url):
+def get_author_info(author_url, author_name=""):
     """
     저자 상세 페이지에 들어가서
-    생년월일과 출생지를 가져오는 함수
+    저자 key, 이름, 생년월일, 출생지, 소개문을 가져오는 함수
     """
 
     # 이미 방문한 저자라면 저장된 값 재사용
@@ -64,14 +89,36 @@ def get_author_info(author_url):
 
     soup = get_soup(author_url)
 
+    author_key = make_author_key(author_url)
+
+    # 저자 상세 페이지 안의 저자 이름
+    page_author_name = get_text_safe(soup.select_one("h3.author-title"))
+
+    # 목록 페이지에서 가져온 이름이 있으면 그걸 우선 사용
+    if author_name:
+        final_author_name = author_name
+    else:
+        final_author_name = page_author_name
+
+    # 생년월일
     born_date = get_text_safe(soup.select_one("span.author-born-date"))
+
+    # 출생지
     born_location = get_text_safe(soup.select_one("span.author-born-location"))
 
+    # 저자 소개문
+    description = get_text_safe(soup.select_one("div.author-description"))
+
     author_info = {
+        "author_key": author_key,
+        "author": final_author_name,
         "born_date": born_date,
-        "born_location": born_location
+        "born_location": born_location,
+        "description": description,
+        "author_url": author_url
     }
 
+    # 같은 저자를 또 요청하지 않도록 저장
     author_cache[author_url] = author_info
 
     # 서버에 너무 빠르게 요청하지 않도록 잠깐 쉬기
@@ -86,6 +133,9 @@ def get_author_info(author_url):
 
 def crawl_quotes():
     quotes_data = []
+
+    # 저자 정보는 중복 없이 저장하기 위해 딕셔너리 사용
+    authors_data = {}
 
     current_url = START_URL
     page_number = 1
@@ -105,6 +155,11 @@ def crawl_quotes():
             # 저자 이름
             author_name = get_text_safe(quote.select_one("small.author"))
 
+            # 명언에 실제로 달린 태그들 전부 가져오기
+            tag_elements = quote.select("a.tag")
+            tags = [get_text_safe(tag) for tag in tag_elements]
+            tag_text = ", ".join(tags)
+
             # 저자 상세 페이지 링크
             author_link_tag = quote.select_one("a[href^='/author/']")
 
@@ -113,21 +168,30 @@ def crawl_quotes():
             else:
                 author_url = ""
 
-            # 저자 상세 페이지에서 생년월일, 출생지 가져오기
+            # 기본값
+            author_key = ""
+            born_date = ""
+            born_location = ""
+
+            # 저자 상세 페이지에 들어가서 추가 정보 가져오기
             if author_url:
-                author_info = get_author_info(author_url)
+                author_info = get_author_info(author_url, author_name)
+
+                author_key = author_info["author_key"]
                 born_date = author_info["born_date"]
                 born_location = author_info["born_location"]
-            else:
-                born_date = ""
-                born_location = ""
 
+                # 저자 정보는 authors_data에 중복 없이 저장
+                authors_data[author_key] = author_info
+
+            # 명언 데이터 저장
             quotes_data.append({
                 "quote": quote_text,
                 "author": author_name,
+                "author_key": author_key,
                 "born_date": born_date,
                 "born_location": born_location,
-                "tag": TAG,
+                "tag": tag_text,
                 "author_url": author_url
             })
 
@@ -141,24 +205,25 @@ def crawl_quotes():
         else:
             current_url = None
 
-    return quotes_data
+    return quotes_data, authors_data
 
 
 # =========================
-# CSV 저장
+# 명언 CSV 저장
 # =========================
 
-def save_to_csv(quotes_data):
+def save_quotes_to_csv(quotes_data):
     fieldnames = [
         "quote",
         "author",
+        "author_key",
         "born_date",
         "born_location",
         "tag",
         "author_url"
     ]
 
-    with open(CSV_FILE, "w", newline="", encoding="utf-8-sig") as file:
+    with open(QUOTES_CSV_FILE, "w", newline="", encoding="utf-8-sig") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
 
         writer.writeheader()
@@ -166,7 +231,32 @@ def save_to_csv(quotes_data):
         for row in quotes_data:
             writer.writerow(row)
 
-    print(f"CSV 저장 완료: {CSV_FILE}")
+    print(f"명언 CSV 저장 완료: {QUOTES_CSV_FILE}")
+
+
+# =========================
+# 저자 CSV 저장
+# =========================
+
+def save_authors_to_csv(authors_data):
+    fieldnames = [
+        "author_key",
+        "author",
+        "born_date",
+        "born_location",
+        "description",
+        "author_url"
+    ]
+
+    with open(AUTHORS_CSV_FILE, "w", newline="", encoding="utf-8-sig") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+
+        writer.writeheader()
+
+        for author_info in authors_data.values():
+            writer.writerow(author_info)
+
+    print(f"저자 CSV 저장 완료: {AUTHORS_CSV_FILE}")
 
 
 # =========================
@@ -176,11 +266,13 @@ def save_to_csv(quotes_data):
 def main():
     print("크롤링 시작")
 
-    quotes_data = crawl_quotes()
+    quotes_data, authors_data = crawl_quotes()
 
-    print(f"총 {len(quotes_data)}개 수집 완료")
+    print(f"총 {len(quotes_data)}개 명언 수집 완료")
+    print(f"총 {len(authors_data)}명 저자 정보 수집 완료")
 
-    save_to_csv(quotes_data)
+    save_quotes_to_csv(quotes_data)
+    save_authors_to_csv(authors_data)
 
     print("크롤링 작업 완료")
 

@@ -3,73 +3,117 @@
 // =========================
 
 let quotesData = [];
-let filteredData = [];
-let activeCardIndex = 0;
+let authorsData = {};
+let activeObserver = null;
 
 // =========================
 // 페이지 로드 후 실행
 // =========================
 
 document.addEventListener('DOMContentLoaded', function () {
-  loadCSV();
+  loadData();
 
   const randomBtn = document.getElementById('randomBtn');
-  const searchInput = document.getElementById('searchInput');
+  const randomAuthor = document.getElementById('randomAuthor');
+  const quoteViewer = document.getElementById('quoteViewer');
 
   randomBtn.addEventListener('click', showRandomQuote);
 
-  searchInput.addEventListener('input', function () {
-    filterQuotes(this.value);
+  randomAuthor.addEventListener('click', function () {
+    const authorKey = randomAuthor.dataset.authorKey;
+
+    if (authorKey) {
+      openAuthorModal(authorKey);
+    }
+  });
+
+  quoteViewer.addEventListener('click', function (event) {
+    const button = event.target.closest('.author-detail-btn');
+
+    if (!button) {
+      return;
+    }
+
+    const authorKey = button.dataset.authorKey;
+    openAuthorModal(authorKey);
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach(function (element) {
+    element.addEventListener('click', closeAuthorModal);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      closeAuthorModal();
+    }
   });
 });
 
 // =========================
-// CSV 파일 불러오기
+// CSV 데이터 불러오기
 // =========================
 
-function loadCSV() {
-  fetch('quotes.csv')
-    .then(function (response) {
-      if (!response.ok) {
-        throw new Error('CSV 파일을 불러오지 못했습니다.');
+function loadData() {
+  Promise.all([
+    fetchCSV('quotes.csv'),
+    fetchCSV('authors.csv').catch(function () {
+      return '';
+    }),
+  ])
+    .then(function ([quotesCsvText, authorsCsvText]) {
+      quotesData = parseCSV(quotesCsvText);
+
+      if (authorsCsvText.trim() !== '') {
+        const authorsArray = parseCSV(authorsCsvText);
+
+        authorsData = {};
+
+        authorsArray.forEach(function (author) {
+          authorsData[author.author_key] = author;
+        });
       }
 
-      return response.text();
-    })
-    .then(function (csvText) {
-      quotesData = parseCSV(csvText);
-      filteredData = quotesData;
-
       showRandomQuote();
-      renderQuoteCards(filteredData);
-      updatePageInfo();
+      renderQuoteCards(quotesData);
     })
     .catch(function (error) {
       console.error(error);
 
       document.getElementById('randomQuote').textContent =
-        'CSV 파일을 불러오지 못했습니다. Live Server 또는 localhost로 실행해주세요.';
+        'CSV 데이터를 불러오지 못했습니다. Live Server 또는 localhost로 실행해주세요.';
+
+      document.getElementById('randomAuthor').textContent = '-';
+      document.getElementById('randomMeta').textContent = '-';
 
       document.getElementById('quoteViewer').innerHTML = `
-                <div class="loading-card">
-                    <p>CSV 파일을 불러오지 못했습니다.</p>
-                </div>
-            `;
+        <article class="loading-card">
+          <p>CSV 데이터를 불러오지 못했습니다.</p>
+        </article>
+      `;
     });
 }
 
+function fetchCSV(fileName) {
+  return fetch(fileName).then(function (response) {
+    if (!response.ok) {
+      throw new Error(`${fileName} 파일을 불러오지 못했습니다.`);
+    }
+
+    return response.text();
+  });
+}
+
 // =========================
-// CSV 문자열을 객체 배열로 변환
+// CSV 파싱
 // =========================
 
 function parseCSV(csvText) {
+  csvText = csvText.replace(/^\uFEFF/, '');
+
   const rows = [];
   let currentRow = [];
   let currentValue = '';
   let insideQuotes = false;
-
-  // utf-8-sig로 저장된 CSV의 BOM 제거
-  csvText = csvText.replace(/^\uFEFF/, '');
 
   for (let i = 0; i < csvText.length; i++) {
     const char = csvText[i];
@@ -104,22 +148,35 @@ function parseCSV(csvText) {
     rows.push(currentRow);
   }
 
-  const headers = rows[0];
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const headers = rows[0].map(function (header) {
+    return header.trim();
+  });
+
   const dataRows = rows.slice(1);
 
-  return dataRows.map(function (row) {
-    const item = {};
+  return dataRows
+    .filter(function (row) {
+      return row.some(function (value) {
+        return value.trim() !== '';
+      });
+    })
+    .map(function (row) {
+      const item = {};
 
-    headers.forEach(function (header, index) {
-      item[header.trim()] = row[index] ? row[index].trim() : '';
+      headers.forEach(function (header, index) {
+        item[header] = row[index] ? row[index].trim() : '';
+      });
+
+      return item;
     });
-
-    return item;
-  });
 }
 
 // =========================
-// 상단 랜덤 명언 출력
+// 랜덤 명언 출력
 // =========================
 
 function showRandomQuote() {
@@ -130,15 +187,24 @@ function showRandomQuote() {
   const randomIndex = Math.floor(Math.random() * quotesData.length);
   const quote = quotesData[randomIndex];
 
-  document.getElementById('randomQuote').textContent = quote.quote;
-  document.getElementById('randomAuthor').textContent = `— ${quote.author}`;
+  document.getElementById('randomQuote').textContent = quote.quote || '-';
+
+  const randomAuthor = document.getElementById('randomAuthor');
+  const authorKey = quote.author_key || makeAuthorKeyFromUrl(quote.author_url);
+
+  randomAuthor.textContent = `— ${quote.author || '-'}`;
+  randomAuthor.dataset.authorKey = authorKey;
+  randomAuthor.disabled = !authorKey;
+
+  const bornDate = quote.born_date || '-';
+  const bornLocation = quote.born_location || '-';
 
   document.getElementById('randomMeta').textContent =
-    `${quote.born_date} / ${quote.born_location}`;
+    `${bornDate} / ${bornLocation}`;
 }
 
 // =========================
-// 전체 명언 카드 생성
+// 명언 카드 생성
 // =========================
 
 function renderQuoteCards(data) {
@@ -148,12 +214,11 @@ function renderQuoteCards(data) {
 
   if (data.length === 0) {
     quoteViewer.innerHTML = `
-            <div class="loading-card">
-                <p>검색 결과가 없습니다.</p>
-            </div>
-        `;
+      <article class="loading-card">
+        <p>표시할 명언 데이터가 없습니다.</p>
+      </article>
+    `;
 
-    updateCurrentCardInfo(0, 0);
     return;
   }
 
@@ -163,55 +228,61 @@ function renderQuoteCards(data) {
     card.className = 'quote-card';
     card.dataset.index = index;
 
+    const authorKey = item.author_key || makeAuthorKeyFromUrl(item.author_url);
+    const tagText = item.tag ? `#${item.tag}` : '';
+
     card.innerHTML = `
-            <div class="quote-index">
-                ${String(index + 1).padStart(2, '0')}
-            </div>
+      <div class="quote-index">
+        ${String(index + 1).padStart(2, '0')}
+      </div>
 
-            <p class="quote-text">
-                ${escapeHTML(item.quote)}
-            </p>
+      <p class="quote-text">
+        ${escapeHTML(item.quote)}
+      </p>
 
-            <div class="quote-bottom">
-                <div>
-                    <p class="quote-author">
-                        ${escapeHTML(item.author)}
-                    </p>
+      <div class="quote-bottom">
+        <div>
+          <p class="quote-author">
+            ${escapeHTML(item.author)}
+          </p>
 
-                    <p class="quote-meta">
-                        ${escapeHTML(item.born_date)}<br>
-                        ${escapeHTML(item.born_location)}
-                    </p>
+          <p class="quote-meta">
+            ${escapeHTML(item.born_date)}<br>
+            ${escapeHTML(item.born_location)}
+          </p>
 
-                    <span class="quote-tag">
-                        #${escapeHTML(item.tag)}
-                    </span>
-                </div>
+          <span class="quote-tag">
+            ${escapeHTML(tagText)}
+          </span>
+        </div>
 
-                <a 
-                    class="quote-link" 
-                    href="${escapeHTML(item.author_url)}" 
-                    target="_blank"
-                >
-                    저자 페이지
-                </a>
-            </div>
-        `;
+        <button
+          class="author-detail-btn"
+          type="button"
+          data-author-key="${escapeHTML(authorKey)}"
+        >
+          저자 소개 보기
+        </button>
+      </div>
+    `;
 
     quoteViewer.appendChild(card);
   });
 
   observeCards();
-  updateCurrentCardInfo(1, data.length);
 }
 
 // =========================
-// 현재 보이는 카드 감지
+// 현재 카드 강조
 // =========================
 
 function observeCards() {
   const quoteViewer = document.getElementById('quoteViewer');
   const cards = document.querySelectorAll('.quote-card');
+
+  if (activeObserver) {
+    activeObserver.disconnect();
+  }
 
   if (cards.length === 0) {
     return;
@@ -219,7 +290,7 @@ function observeCards() {
 
   cards[0].classList.add('active');
 
-  const observer = new IntersectionObserver(
+  activeObserver = new IntersectionObserver(
     function (entries) {
       entries.forEach(function (entry) {
         if (entry.isIntersecting) {
@@ -228,9 +299,6 @@ function observeCards() {
           });
 
           entry.target.classList.add('active');
-
-          activeCardIndex = Number(entry.target.dataset.index);
-          updateCurrentCardInfo(activeCardIndex + 1, cards.length);
         }
       });
     },
@@ -241,75 +309,93 @@ function observeCards() {
   );
 
   cards.forEach(function (card) {
-    observer.observe(card);
+    activeObserver.observe(card);
   });
 }
 
 // =========================
-// 검색 기능
+// 저자 소개 모달
 // =========================
 
-function filterQuotes(keyword) {
-  const lowerKeyword = keyword.toLowerCase().trim();
+function openAuthorModal(authorKey) {
+  const modal = document.getElementById('authorModal');
 
-  if (lowerKeyword === '') {
-    filteredData = quotesData;
+  const authorInfo = authorsData[authorKey];
+
+  if (authorInfo) {
+    document.getElementById('modalAuthorName').textContent =
+      authorInfo.author || '-';
+
+    document.getElementById('modalBornDate').textContent =
+      authorInfo.born_date || '-';
+
+    document.getElementById('modalBornLocation').textContent =
+      authorInfo.born_location || '-';
+
+    document.getElementById('modalDescription').textContent =
+      authorInfo.description || '저자 소개가 없습니다.';
+
+    document.getElementById('modalAuthorLink').href =
+      authorInfo.author_url || '#';
   } else {
-    filteredData = quotesData.filter(function (item) {
-      return (
-        item.quote.toLowerCase().includes(lowerKeyword) ||
-        item.author.toLowerCase().includes(lowerKeyword) ||
-        item.born_date.toLowerCase().includes(lowerKeyword) ||
-        item.born_location.toLowerCase().includes(lowerKeyword) ||
-        item.tag.toLowerCase().includes(lowerKeyword)
-      );
-    });
+    const quoteInfo = findQuoteByAuthorKey(authorKey);
+
+    document.getElementById('modalAuthorName').textContent = quoteInfo
+      ? quoteInfo.author
+      : '저자 정보 없음';
+
+    document.getElementById('modalBornDate').textContent = quoteInfo
+      ? quoteInfo.born_date
+      : '-';
+
+    document.getElementById('modalBornLocation').textContent = quoteInfo
+      ? quoteInfo.born_location
+      : '-';
+
+    document.getElementById('modalDescription').textContent =
+      '저자 소개 데이터를 찾을 수 없습니다. authors.csv 파일이 생성되었는지 확인해주세요.';
+
+    document.getElementById('modalAuthorLink').href = quoteInfo
+      ? quoteInfo.author_url
+      : '#';
   }
 
-  renderQuoteCards(filteredData);
-  updatePageInfo();
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeAuthorModal() {
+  const modal = document.getElementById('authorModal');
+
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
 }
 
 // =========================
-// 상단 태그 / 총 개수 표시
+// 유틸 함수
 // =========================
 
-function updatePageInfo() {
-  const tagInfo = document.getElementById('tagInfo');
-  const totalCount = document.getElementById('totalCount');
+function findQuoteByAuthorKey(authorKey) {
+  return quotesData.find(function (quote) {
+    const key = quote.author_key || makeAuthorKeyFromUrl(quote.author_url);
+    return key === authorKey;
+  });
+}
 
-  if (quotesData.length === 0) {
-    tagInfo.textContent = 'Tag: -';
-    totalCount.textContent = 'Total: 0 quotes';
-    return;
+function makeAuthorKeyFromUrl(url) {
+  if (!url) {
+    return '';
   }
 
-  const tagName = quotesData[0].tag || '-';
-
-  tagInfo.textContent = `Tag: ${tagName}`;
-  totalCount.textContent = `Total: ${filteredData.length} / ${quotesData.length} quotes`;
+  return url.replace(/\/$/, '').split('/').pop();
 }
-
-// =========================
-// 현재 카드 번호 표시
-// =========================
-
-function updateCurrentCardInfo(current, total) {
-  const currentCardInfo = document.getElementById('currentCardInfo');
-
-  currentCardInfo.textContent = `${current} / ${total}`;
-}
-
-// =========================
-// HTML 특수문자 처리
-// =========================
 
 function escapeHTML(text) {
   if (!text) {
     return '';
   }
 
-  return text
+  return String(text)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
